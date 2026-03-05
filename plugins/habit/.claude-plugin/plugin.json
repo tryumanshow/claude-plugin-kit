@@ -1,0 +1,10 @@
+{
+  "name": "habit",
+  "version": "1.0.0",
+  "description": "Auto-detect repeated prompt patterns across sessions and propose Claude Code skill generation",
+  "author": {
+    "name": "swryu"
+  },
+  "license": "MIT",
+  "keywords": ["skill", "habit", "pattern", "auto", "learning", "productivity"]
+}

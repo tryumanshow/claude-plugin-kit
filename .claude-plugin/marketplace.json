@@ -27,6 +27,14 @@
       "version": "1.0.4",
       "category": "productivity",
       "keywords": ["tokens", "context", "usage", "hud", "gauge"]
+    },
+    {
+      "name": "habit",
+      "source": "./plugins/habit",
+      "description": "Auto-detect repeated prompt patterns across sessions and propose Claude Code skill generation",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["skill", "habit", "pattern", "auto", "learning"]
     }
   ]
 }
