@@ -1,0 +1,32 @@
+{
+  "name": "claude-plugin-kit",
+  "metadata": {
+    "description": "Personal Claude Code plugins by swryu",
+    "pluginRoot": "./plugins"
+  },
+  "source": {
+    "source": "github",
+    "repo": "tryumanshow/claude-plugin-kit"
+  },
+  "owner": {
+    "name": "tryumanshow"
+  },
+  "plugins": [
+    {
+      "name": "fork-session",
+      "source": "./plugins/fork-session",
+      "description": "Fork a Claude Code session at any conversation turn into a new terminal window",
+      "version": "1.0.0",
+      "category": "productivity",
+      "keywords": ["session", "fork", "branch", "terminal"]
+    },
+    {
+      "name": "token-gauge",
+      "source": "./plugins/token-gauge",
+      "description": "Real-time context token usage display after every Claude response — no commands needed",
+      "version": "1.0.4",
+      "category": "productivity",
+      "keywords": ["tokens", "context", "usage", "hud", "gauge"]
+    }
+  ]
+}

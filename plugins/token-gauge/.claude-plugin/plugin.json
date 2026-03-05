@@ -1,0 +1,10 @@
+{
+  "name": "token-gauge",
+  "version": "1.0.4",
+  "description": "Real-time context token usage display after every Claude response",
+  "author": {
+    "name": "swryu"
+  },
+  "license": "MIT",
+  "keywords": ["tokens", "context", "usage", "hud", "gauge"]
+}

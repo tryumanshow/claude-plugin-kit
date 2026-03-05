@@ -1,0 +1,10 @@
+{
+  "name": "fork-session",
+  "version": "1.0.0",
+  "description": "Fork a Claude Code session at any conversation turn into a new terminal window",
+  "author": {
+    "name": "swryu"
+  },
+  "license": "MIT",
+  "keywords": ["claude-code", "session", "fork", "branch"]
+}
