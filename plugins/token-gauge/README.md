@@ -1,14 +1,26 @@
 # token-gauge
 
-Real-time context token usage in the Claude Code status bar — no commands needed.
+Real-time session info in the Claude Code status bar — no commands needed.
 
-## What it does
-
-Claude Code has a 200k token context window. As a session grows (long conversations, large files, prompt caching), that window fills up. `token-gauge` shows you exactly where you stand, always visible in the status bar at the bottom of the terminal.
+## What it shows
 
 ```
-[OMC] ...  │  🧠 ██████████░░░░  68%  136k/200k
+Current Model: Sonnet  │  Context: 🧠 ██████░░░░ 62%  124k/200k  │  Elapsed: 1h23m
 ```
+
+| Section | Description |
+|---|---|
+| **Current Model** | Active model name (updates when switching Opus ↔ Sonnet) |
+| **Context** | Context window usage out of 200k tokens |
+| **Elapsed** | Time since current session started |
+
+Context thresholds:
+
+| Indicator | When |
+|---|---|
+| 🧠 | Normal (< 85%) |
+| ⚠️ | Warning (85–94%) |
+| 🚨 | Critical (≥ 95%) |
 
 ## Install
 
@@ -26,28 +38,20 @@ Then run the setup skill once inside a Claude Code session:
 
 After setup, restart Claude Code once for the status bar change to take effect.
 
-## Display
-
-The gauge appears in the status bar and updates automatically:
-
-| Indicator | When |
-|---|---|
-| 🧠 `████████░░░░░░` | Normal (< 85%) |
-| ⚠️ `████████████░░` | Warning (85–94%) |
-| 🚨 `██████████████` | Critical (≥ 95%) |
-
-Format: `ICON BAR PCT%  USED_k/200k`
-
 ## How it works
 
-Two mechanisms run in parallel:
+Two hooks run in parallel:
 
-| Mechanism | What it does | Visible to |
+| Hook | Trigger | What it does |
 |---|---|---|
-| **statusLine** (`combined-status.sh`) | Reads last ~30KB of session JSONL, outputs gauge to status bar | You |
-| **UserPromptSubmit hook** (`show-usage.sh`) | Injects token count as system context | Claude |
+| **statusLine** (`combined-status.sh`) | Every ~300ms | Reads session JSONL, renders status bar |
+| **UserPromptSubmit** (`show-usage.sh`) | Each user message | Calls Anthropic usage API, injects context into Claude |
 
-The setup skill wraps your existing statusLine (e.g. OMC HUD) and appends the gauge — existing status bar content is preserved.
+### Performance
+
+- Session file lookup is cached for 5 seconds — avoids scanning hundreds of JSONL files on every poll
+- Only the first 1KB (timestamp) and last 30KB (tokens) of the session file are read per poll
+- API calls happen at most once per 5 minutes via the UserPromptSubmit hook
 
 ### Token counting
 
@@ -65,10 +69,11 @@ Prompt caching splits tokens across three fields; summing all three gives the tr
 plugins/token-gauge/
 ├── .claude-plugin/plugin.json
 ├── hooks/
-│   ├── show-usage.sh       # UserPromptSubmit hook (Claude context injection)
-│   └── token-status.sh     # statusLine script (user-visible gauge)
+│   ├── combined-status.sh   # statusLine entry point (extracts model from stdin)
+│   ├── show-usage.sh        # UserPromptSubmit hook (API call + Claude context)
+│   └── token-status.sh      # statusLine renderer (model, context, elapsed)
 └── skills/setup/
-    └── SKILL.md            # /token-gauge:setup
+    └── SKILL.md             # /token-gauge:setup
 ```
 
 Installed to: `~/.claude/hooks/token-gauge/`
