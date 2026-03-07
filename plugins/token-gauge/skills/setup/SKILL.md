@@ -1,21 +1,21 @@
 ---
 name: setup
 description: |
-  Install the token-gauge plugin: adds a live token gauge + usage stats to the
-  Claude Code status bar and injects usage context before each response.
+  Install the token-gauge plugin: adds model name, context gauge, and session
+  elapsed time to the Claude Code status bar.
   Run once after installing the plugin. Re-run after plugin updates.
-  Triggers: "setup token-gauge", "install token gauge", "enable usage display"
+  Triggers: "setup token-gauge", "install token gauge hook", "enable usage display"
 allowed-tools: Bash
 ---
 
-Install token-gauge so context usage and weekly token stats appear in the Claude Code
-status bar automatically — no commands needed.
+Install token-gauge so model name, context usage, and session time appear in the
+Claude Code status bar automatically — no commands needed.
 
 Run the following and show all output:
 
 ```bash
 python3 - "${CLAUDE_PLUGIN_ROOT}" << 'PYEOF'
-import json, os, sys, shutil, stat, subprocess
+import json, os, sys, shutil, stat
 
 plugin_root   = sys.argv[1]
 stable_dir    = os.path.expanduser("~/.claude/hooks/token-gauge")
@@ -24,21 +24,14 @@ settings_path = os.path.expanduser("~/.claude/settings.json")
 os.makedirs(stable_dir, exist_ok=True)
 
 # ── Copy hook scripts to stable, version-independent location ───────────────
-scripts = {
-    "show-usage.sh":    f"{plugin_root}/hooks/show-usage.sh",
-    "token-status.sh":  f"{plugin_root}/hooks/token-status.sh",
-    "compute-usage.py": f"{plugin_root}/hooks/compute-usage.py",
-}
-for dst_name, src in scripts.items():
-    dst = f"{stable_dir}/{dst_name}"
+for name in ("show-usage.sh", "token-status.sh", "combined-status.sh"):
+    src = f"{plugin_root}/hooks/{name}"
+    dst = f"{stable_dir}/{name}"
     shutil.copy2(src, dst)
-    st = os.stat(dst).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH
-    os.chmod(dst, st)
+    os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
-token_status_path = f"{stable_dir}/token-status.sh"
-show_usage_path   = f"{stable_dir}/show-usage.sh"
-compute_path      = f"{stable_dir}/compute-usage.py"
-combined_path     = f"{stable_dir}/combined-status.sh"
+combined_path   = f"{stable_dir}/combined-status.sh"
+show_usage_path = f"{stable_dir}/show-usage.sh"
 
 # ── Load or init settings ────────────────────────────────────────────────────
 try:
@@ -47,37 +40,34 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
     settings = {}
 
-# ── Detect existing statusLine command ──────────────────────────────────────
+# ── If an existing statusLine is present, wrap it ────────────────────────────
 existing_sl  = settings.get("statusLine", {})
 existing_cmd = existing_sl.get("command", "") if isinstance(existing_sl, dict) else ""
 
-# ── Build combined-status.sh ─────────────────────────────────────────────────
 if existing_cmd and "token-gauge" not in existing_cmd:
-    combined = (
+    wrapper_path = f"{stable_dir}/wrapper-status.sh"
+    wrapper = (
         "#!/usr/bin/env bash\n"
-        "# combined-status.sh — existing statusLine + token-gauge\n"
-        f'PREV_OUT=$( {existing_cmd} 2>/dev/null || true )\n'
-        f'GAUGE=$( {token_status_path} 2>/dev/null || true )\n'
-        'if [[ -n "$PREV_OUT" && -n "$GAUGE" ]]; then\n'
-        '    echo "${PREV_OUT}  │  ${GAUGE}"\n'
+        "STDIN_DATA=$(cat)\n"
+        f'PREV=$( echo "$STDIN_DATA" | {existing_cmd} 2>/dev/null || true )\n'
+        f'GAUGE=$( echo "$STDIN_DATA" | bash {combined_path} 2>/dev/null || true )\n'
+        'if [[ -n "$PREV" && -n "$GAUGE" ]]; then\n'
+        '    echo "${PREV}  │  ${GAUGE}"\n'
         'elif [[ -n "$GAUGE" ]]; then\n'
         '    echo "${GAUGE}"\n'
         'else\n'
-        '    echo "${PREV_OUT}"\n'
+        '    echo "${PREV}"\n'
         'fi\n'
     )
+    with open(wrapper_path, "w") as f:
+        f.write(wrapper)
+    os.chmod(wrapper_path, os.stat(wrapper_path).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+    entry_path = wrapper_path
 else:
-    combined = (
-        "#!/usr/bin/env bash\n"
-        f'{token_status_path} 2>/dev/null || true\n'
-    )
-
-with open(combined_path, "w") as f:
-    f.write(combined)
-os.chmod(combined_path, os.stat(combined_path).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+    entry_path = combined_path
 
 # ── Update statusLine ────────────────────────────────────────────────────────
-settings["statusLine"] = {"type": "command", "command": combined_path}
+settings["statusLine"] = {"type": "command", "command": entry_path}
 
 # ── Clean up any old token-gauge hook entries ────────────────────────────────
 hooks = settings.setdefault("hooks", {})
@@ -91,7 +81,7 @@ for event in ("Stop", "UserPromptSubmit"):
         )
     ]
 
-# ── Register UserPromptSubmit hook (injects context for Claude) ──────────────
+# ── Register UserPromptSubmit hook ───────────────────────────────────────────
 hooks.setdefault("UserPromptSubmit", []).append({
     "matcher": "",
     "hooks": [{"type": "command", "command": show_usage_path}]
@@ -100,35 +90,22 @@ hooks.setdefault("UserPromptSubmit", []).append({
 with open(settings_path, "w") as f:
     json.dump(settings, f, indent=2)
 
-# ── Kick off initial weekly cache computation in background ──────────────────
-try:
-    subprocess.Popen(
-        ["python3", compute_path],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    print("⏳ Computing weekly usage stats in background…")
-except Exception as e:
-    print(f"⚠️  Could not start background computation: {e}")
-
-print(f"✅ token-gauge v2 installed!")
-print(f"   StatusLine : {combined_path}")
+print(f"✅ token-gauge v3 installed!")
+print(f"   StatusLine : {entry_path}")
 if existing_cmd and "token-gauge" not in existing_cmd:
     print(f"   Wrapping   : {existing_cmd}")
 print(f"   Hook       : UserPromptSubmit → {show_usage_path}")
-print(f"   Compute    : {compute_path} (background, 5-min cache)")
 print()
 print("Status bar will show:")
-print("  🧠 ████████░░  68%  136k/200k  │  📊 3.2M  │  📅 45M · 31M↓")
+print("  Current Model: Sonnet  │  Context: 🧠 ██████░░░░ 62%  124k/200k  │  Elapsed: 1h23m")
 print()
 print("⚡ Restart Claude Code — the token gauge will appear in the status bar.")
 PYEOF
 ```
 
-Tell the user the gauge is now in the **status bar** (bottom of the terminal window) and will update automatically.
-- Context gauge updates on every status bar poll
-- Session total updates when the session file changes
-- Weekly stats refresh every 5 minutes in the background (first run may take 10–30s)
+Tell the user the gauge is now in the **status bar** (bottom of the terminal window) and will update automatically:
+- Model name updates when switching between Opus and Sonnet
+- Context gauge updates on every status bar poll (~300ms)
+- Elapsed time counts from the first message in the current session
 
 They need to restart Claude Code once for the statusLine change to take effect.
